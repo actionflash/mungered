@@ -101,4 +101,13 @@ else:
     st.warning("No stocks currently meet your strict requirements. Try 'inverting' your filters.")
 
 st.divider()
-st.caption("© 2026 Inversion Engine | Data updated hourly | Built for Rational Investors.")
+st.divider()
+st.caption("🚨 **PERSONAL HOBBY PROJECT - NOT FOR COMMERCIAL USE**")
+st.caption("""
+    **DISCLAIMER:** This tool is for educational and practice purposes only. 
+    It does not constitute financial advice, investment research, or an offer to buy/sell securities. 
+    The 'Munger Score' is a mathematical experiment and not a verified indicator of performance. 
+    The author is not FCA regulated. Always do your own due diligence.
+""")
+st.caption("© 2026 | Built for personal educational practice.")
+
