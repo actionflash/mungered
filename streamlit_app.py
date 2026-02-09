@@ -77,35 +77,48 @@ scan_limit = st.sidebar.select_slider("Scan Depth", options=[20, 50, 100, "Full"
 if st.sidebar.button("🚀 Run Munger Scan"):
     st.cache_data.clear()
 
-# --- 5. Main Logic ---
+# --- 5. Main Logic & Sorting ---
 all_tickers = get_universe()
 limit_val = len(all_tickers) if scan_limit == "Full" else scan_limit
 
 with st.spinner(f"Inverting {limit_val} stocks..."):
     df = scan_markets(all_tickers, limit=limit_val)
+    
     if not df.empty:
+        # Calculate Scores
         df['Munger Score'] = df.apply(lambda x: calculate_munger_score(x, user_yield), axis=1)
-        # Filter: Only show the "Best" (Passing Grade > 50)
-        final_list = df[df['Munger Score'] >= 50].sort_values(by="Munger Score", ascending=False)
+        
+        # UX IMPROVEMENT: The "Strict Hierarchy" Filter
+        # 1. Filter by your sidebar requirements
+        mask = (df['Yield %'] >= user_yield) & (df['Munger Score'] >= 40)
+        filtered_df = df[mask].copy()
+        
+        # 2. SORT by Score (Highest First) then Yield
+        filtered_df = filtered_df.sort_values(by=['Munger Score', 'Yield %'], ascending=[False, False])
 
-# --- 6. The Results List ---
+# --- 6. The Results Display ---
 st.subheader("🏆 The 'Fat Pitch' Shortlist")
-st.write("These stocks pass the Inversion Test based on your requirements.")
 
-if not final_list.empty:
-    # Stylised display
+if not filtered_df.empty:
+    # UX IMPROVEMENT: Dynamic column formatting
     st.dataframe(
-        final_list.style.background_gradient(subset=['Munger Score'], cmap='RdYlGn'),
+        filtered_df.style.background_gradient(subset=['Munger Score'], cmap='RdYlGn')
+        .format({
+            "Yield %": "{:.2f}%",
+            "Debt/EBITDA": "{:.1f}x",
+            "Insider %": "{:.2f}%",
+            "Price": "{:.2f}",
+            "P/E": "{:.1f}"
+        }),
         use_container_width=True,
         hide_index=True
     )
     
     # Download Button
-    csv = final_list.to_csv(index=False).encode('utf-8')
+    csv = filtered_df.to_csv(index=False).encode('utf-8')
     st.download_button("📥 Download Shortlist (CSV)", csv, "munger_shortlist.csv", "text/csv")
 else:
-    st.warning("No stocks currently meet your strict requirements. Try 'inverting' your filters.")
-
+    st.warning("No stocks currently meet your requirements. Try lowering the 'Min Yield' or increasing 'Scan Depth'.")
 st.divider()
 st.divider()
 st.caption("🚨 **PERSONAL HOBBY PROJECT - NOT FOR COMMERCIAL USE**")
@@ -116,6 +129,7 @@ st.caption("""
     The author is not FCA regulated. Always do your own due diligence.
 """)
 st.caption("© 2026 | Built for personal educational practice.")
+
 
 
 
