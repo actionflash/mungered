@@ -9,73 +9,79 @@ from pytickersymbols import PyTickerSymbols
 if st.text_input("Enter Practice Key", type="password") != "munger2026":
     st.stop() # Stops the rest of the app from loading
 
-st.set_page_config(page_title="Inversion Engine Pro", layout="wide")
 
-# --- 1. The Stock Universe ---
-@st.cache_data
-def get_universe():
-    pts = PyTickerSymbols()
-    indices = [
-        pts.get_ftse_100_london_yahoo_tickers(),
-        pts.get_nasdaq_100_nyc_yahoo_tickers(),
-        pts.get_dow_jones_nyc_yahoo_tickers()
-    ]
-    return sorted(list(set([t for idx in indices for t in idx])))
+# --- 1. CONFIG & CURRENCY SCOUT ---
+st.set_page_config(page_title="Inversion Engine: Munger Pro", layout="wide")
 
-# --- 2. The Munger Scoring Engine ---
-def calculate_munger_score(row, target_yield):
-    score = 0
-    # Yield Check (30 points)
-    if row['Yield %'] >= target_yield: score += 30
-    elif row['Yield %'] > 0: score += 15
-    
-    # Debt Check (30 points) - Inversion: Less is more
-    if row['Debt/EBITDA'] <= 2: score += 30
-    elif row['Debt/EBITDA'] <= 4: score += 15
-    
-    # Insider Check (20 points)
-    if row['Insider %'] >= 5: score += 20
-    elif row['Insider %'] >= 1: score += 10
-    
-    # Value Check (20 points) - Simulating P/E vs History
-    if row['P/E'] < 15: score += 20
-    elif row['P/E'] < 25: score += 10
-    
-    return score
-
-# --- 3. Data Processing ---
 @st.cache_data(ttl=3600)
-def scan_markets(tickers, limit=50):
+def get_exchange_rate():
+    # Fetches GBP/USD rate
+    forex = yf.Ticker("GBPUSD=X")
+    return forex.fast_info['lastPrice']
+
+# --- 2. THE ADVANCED SCANNER ---
+@st.cache_data(ttl=3600)
+def scan_munger_universe(tickers, base_currency="USD", limit=50):
+    rate = get_exchange_rate()
     results = []
+    
     for symbol in tickers[:limit]:
         try:
             t = yf.Ticker(symbol)
             info = t.info
-            price = info.get('currentPrice', 1)
-            ebitda = info.get('ebitda', 0)
-            debt = info.get('totalDebt', 0)
             
-            data = {
+            # Normalise Price (Convert GBp to GBP, then to USD if needed)
+            raw_price = info.get('currentPrice', 1)
+            currency = info.get('currency', 'USD')
+            
+            price_fixed = raw_price / 100 if currency == 'GBp' else raw_price
+            price_usd = price_fixed * rate if currency == 'GBP' else price_fixed
+            
+            # Munger Quality Metrics
+            roic = info.get('returnOnAssets', 0) * 2 # Proxy for ROIC in yfinance
+            margin = info.get('operatingMargins', 0) * 100
+            fcf = info.get('freeCashflow', 0)
+            mcap = info.get('marketCap', 1)
+            fcf_yield = (fcf / mcap) * 100 if mcap > 0 else 0
+            
+            results.append({
                 "Ticker": symbol,
                 "Name": info.get('shortName', 'Unknown'),
-                "Price": price,
-                "Yield %": (info.get('dividendRate', 0) / price * 100),
-                "Debt/EBITDA": (debt / ebitda) if ebitda > 0 else 99,
-                "Insider %": info.get('heldPercentInsiders', 0) * 100,
-                "P/E": info.get('forwardPE', 99)
-            }
-            results.append(data)
+                "Price (USD)": price_usd,
+                "Yield %": (info.get('dividendRate', 0) / price_fixed * 100),
+                "ROIC %": roic * 100,
+                "Op. Margin %": margin,
+                "FCF Yield %": fcf_yield,
+                "Debt/EBITDA": info.get('totalDebt', 0) / info.get('ebitda', 1)
+            })
         except: continue
     return pd.DataFrame(results)
 
-# --- 4. Sidebar & Controls ---
-st.title("🧮 Inversion Engine")
-st.sidebar.header("🎯 Your Requirements")
-user_yield = st.sidebar.slider("Min Dividend Yield %", 0.0, 10.0, 3.5)
-scan_limit = st.sidebar.select_slider("Scan Depth", options=[20, 50, 100, "Full"], value=50)
+# --- 3. THE UI FILTERS ---
+st.sidebar.header("🏛 Munger's Essential Filters")
+target_yield = st.sidebar.slider("Min Yield %", 0.0, 8.0, 3.0)
+min_roic = st.sidebar.slider("Min ROIC % (Quality)", 0, 50, 15)
+min_margin = st.sidebar.slider("Min Op. Margin % (Moat)", 0, 50, 10)
+max_debt = st.sidebar.slider("Max Debt/EBITDA (Safety)", 0.0, 10.0, 3.0)
 
-if st.sidebar.button("🚀 Run Munger Scan"):
-    st.cache_data.clear()
+# --- 4. EXECUTION & RESULTS ---
+pts = PyTickerSymbols()
+all_tickers = sorted(list(set(pts.get_ftse_100_london_yahoo_tickers() + pts.get_nasdaq_100_nyc_yahoo_tickers())))
+
+with st.spinner("Normalising Currencies & Inverting Markets..."):
+    df = scan_munger_universe(all_tickers)
+    
+    # APPLY THE FILTERS
+    mask = (
+        (df['Yield %'] >= target_yield) & 
+        (df['ROIC %'] >= min_roic) & 
+        (df['Op. Margin %'] >= min_margin) &
+        (df['Debt/EBITDA'] <= max_debt)
+    )
+    final_df = df[mask].sort_values(by="ROIC %", ascending=False)
+
+st.subheader(f"🏆 Found {len(final_df)} 'Wonderful Companies' at Fair Prices")
+st.dataframe(final_df.style.background_gradient(cmap='RdYlGn', subset=['ROIC %', 'FCF Yield %']), use_container_width=True)
 
 # --- 5. Main Logic & Sorting ---
 all_tickers = get_universe()
@@ -129,6 +135,7 @@ st.caption("""
     The author is not FCA regulated. Always do your own due diligence.
 """)
 st.caption("© 2026 | Built for personal educational practice.")
+
 
 
 
