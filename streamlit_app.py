@@ -1,11 +1,13 @@
-# Simple Practice Gate
-if st.text_input("Enter Practice Key", type="password") != "munger2026":
-    st.stop() # Stops the rest of the app from loading
+
     
 import streamlit as st
 import yfinance as yf
 import pandas as pd
 from pytickersymbols import PyTickerSymbols
+
+# Simple Practice Gate
+if st.text_input("Enter Practice Key", type="password") != "munger2026":
+    st.stop() # Stops the rest of the app from loading
 
 st.set_page_config(page_title="Inversion Engine Pro", layout="wide")
 
@@ -114,5 +116,6 @@ st.caption("""
     The author is not FCA regulated. Always do your own due diligence.
 """)
 st.caption("© 2026 | Built for personal educational practice.")
+
 
 
